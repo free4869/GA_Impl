@@ -1,7 +1,8 @@
+# encoding: utf-8
 from matplotlib import pyplot as plt
 import matplotlib
-from mpl_toolkits.mplot3d import Axes3D
-from IPython import display
+# from mpl_toolkits.mplot3d import Axes3D
+# from IPython import display
 
 import numpy as np
 import pandas as pd
@@ -104,6 +105,7 @@ class GA():
             from IPython import display
 
         plt.ion()
+
         for i in range(iter_time):
             '''
             plt.cla()
@@ -117,4 +119,4 @@ class GA():
 '''
             self.evolution()
             self.best_fit.append(np.max(self.get_fitness()))
-            print(self.log().head(3))
+            print(self.log().sort_values(by="F", ascending=False).head(3))
