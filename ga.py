@@ -1,4 +1,4 @@
-# encoding: utf-8
+# encoding=GBK
 from matplotlib import pyplot as plt
 import matplotlib
 # from mpl_toolkits.mplot3d import Axes3D
@@ -15,20 +15,19 @@ class GA():
         self.bound = bound
         # Variable check
         if nums.shape[1] != bound.shape[0]:
-            raise Exception(f'范围与变量的数目不一致, {nums.shape[1]}个变量，{bound.shape[0]}个范围')
+            raise Exception(f'Unmatched number of variables and bounds, with {nums.shape[1]} variables and {bound.shape[0]} bounds')
 
         for var in nums:
             for index, var_curr in enumerate(var):
                 if var_curr < bound[index][0] or var_curr > bound[index][1]:
-                    raise Exception(f'{var_curr}超出取值范围')
+                    raise Exception(f'{var_curr} exceeded the bound')
 
         for min_bound, max_bound in bound:
             if max_bound < min_bound:
-                raise Exception(f'({min_bound}, {max_bound})非法的取值范围')
+                raise Exception(f'({min_bound}, {max_bound}) illegal bound')
 
-        # 所有变量的最小值和最大值
-        # var_len为所有变量的取值范围大小
-        # bit为每个变量按整数编码最小的二进制位数
+        # min and max value of all nums
+        # var_len is the range of nums
         min_nums, max_nums = np.array(list(zip(*bound)))
         self.var_len = var_len = max_nums - min_nums
         self.DNA_SIZE = DNA_SIZE
@@ -37,16 +36,19 @@ class GA():
         self.func = func
         self.best_fit = []
 
-        # POP_SIZE为进化的种群数
+        # POP_SIZE stands for the number of population
         self.POP_SIZE = len(nums)
         POP = np.zeros((*nums.shape, DNA_SIZE))
         for i in range(nums.shape[0]):
             for j in range(nums.shape[1]):
-                # 编码方式：
+                # encoding method
                 num = int(round((nums[i, j] - bound[j][0]) * ((2 ** DNA_SIZE) / var_len[j])))
-                # 用python自带的格式化转化为前面空0的二进制字符串，然后拆分成列表
                 POP[i, j] = [int(k) for k in ('{0:0' + str(DNA_SIZE) + 'b}').format(num)]
         self.POP = POP
+        self.fitness = self.func(*np.array(list(zip(*self.translateDNA()))))
+
+    def get_fitness(self):
+        return self.fitness
 
 # Decode
     def translateDNA(self):
@@ -58,31 +60,45 @@ class GA():
                 binary_vector[i, j] += self.bound[j][0]
         return binary_vector
 # Calculate fitness
-    def get_fitness(self):
-        result = self.func(*np.array(list(zip(*self.translateDNA()))))
-        return result
+    def update_fitness(self):
+        self.fitness = self.func(*np.array(list(zip(*self.translateDNA()))))
+
 # Calculate non-negative fitness based on min value
     def get_positive_fitness(self):
-        result = self.func(*np.array(list(zip(*self.translateDNA()))))
+        result = self.get_fitness()
         min_fit = np.min(result, axis=0)
         if not np.all(result == min_fit):
             result -= min_fit
         return result
 
-    def select(self):
-        fitness = self.get_positive_fitness()
-        self.POP = self.POP[np.random.choice(np.arange(self.POP.shape[0]), size=self.POP.shape[0], replace=True,
-                                             p=fitness / np.sum(fitness))]
+    def select(self, with_rank = True, pin_percent = 0.1):
+        pos_fitness = self.get_positive_fitness()
+        sorted_fitness = np.argsort(pos_fitness)
+        for i, v in enumerate(sorted_fitness):
+            pos_fitness[v] = i
+
+        POP_copy = self.POP.copy()
+        for i in range(self.POP_SIZE):
+            self.POP[i] = POP_copy[int(sorted_fitness[i])]
+
+        pin_position = int(self.POP_SIZE * (1 - pin_percent))
+        self.POP[0 : pin_position] = self.POP[np.random.choice(np.arange(self.POP.shape[0]), size=pin_position,
+                                                               replace=True, p=pos_fitness / np.sum(pos_fitness))]
+
 # Crossover with high probability
-    def crossover(self):
-        for people in self.POP:
+    def crossover(self, pin_percent = 0.1):
+        pin_position = int(self.POP_SIZE * (1 - pin_percent))
+        POP_copy = self.POP[0:pin_position]
+        for people in POP_copy:
             if np.random.rand() < self.cross_rate:
                 i_ = np.random.randint(0, self.POP.shape[0], size=1)
                 cross_points = np.random.randint(0, 2, size=(len(self.var_len), self.DNA_SIZE)).astype(np.bool)
                 people[cross_points] = self.POP[i_, cross_points]
 # Mutate with low probability
-    def mutate(self):
-        for people in self.POP:
+    def mutate(self, pin_percent = 0.1):
+        pin_position = int(self.POP_SIZE * (1 - pin_percent))
+        POP_copy = self.POP[0:pin_position]
+        for people in POP_copy:
             for var in people:
                 for point in range(self.DNA_SIZE):
                     if np.random.rand() < self.mutation:
@@ -92,10 +108,12 @@ class GA():
         self.select()
         self.crossover()
         self.mutate()
+        self.update_fitness()
+        self.best_fit.append(np.max(self.fitness))
 
 # Print out current status
     def log(self):
-        return pd.DataFrame(np.hstack((self.translateDNA(), self.get_fitness().reshape((len(self.POP), 1)))),
+        return pd.DataFrame(np.hstack((self.translateDNA(), self.fitness.reshape((len(self.POP), 1)))),
                             columns=[f'x{i}' for i in range(len(self.var_len))] + ['F'])
 
 # Try drawing
@@ -118,5 +136,5 @@ class GA():
                 display.display(plt.gcf())
 '''
             self.evolution()
-            self.best_fit.append(np.max(self.get_fitness()))
+            print("Iteration %d" % (i + 1))
             print(self.log().sort_values(by="F", ascending=False).head(3))
